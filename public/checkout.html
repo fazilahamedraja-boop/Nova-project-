@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout - NOVA</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <main class="main-content">
+    <div class="container">
+      <h1 class="mb-4" data-testid="checkout-title">Checkout</h1>
+
+      <div class="steps" data-testid="checkout-steps">
+        <div class="step active" data-step="1"><div class="step-number">1</div><span class="step-label">Shipping</span><div class="step-line"></div></div>
+        <div class="step" data-step="2"><div class="step-number">2</div><span class="step-label">Payment</span><div class="step-line"></div></div>
+        <div class="step" data-step="3"><div class="step-number">3</div><span class="step-label">Review</span></div>
+      </div>
+
+      <div class="checkout-layout">
+        <div id="checkout-form-area" data-testid="checkout-form-area"></div>
+        <div class="checkout-summary cart-summary" id="order-summary" data-testid="order-summary"></div>
+      </div>
+    </div>
+  </main>
+  <div id="footer"></div>
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Auth required');
+
+    let currentStep = 1;
+    let cartData = null;
+    let couponDiscount = 0;
+    let appliedCoupon = null;
+    const formData = { shipping: {}, payment: {} };
+
+    async function init() {
+      try {
+        const res = await cart.get();
+        cartData = res.data;
+        if (cartData.items.length === 0) {
+          window.location.href = '/cart.html';
+          return;
+        }
+        const profile = await users.getProfile();
+        formData.shipping = {
+          shippingFirstName: profile.data.user.first_name,
+          shippingLastName: profile.data.user.last_name,
+          shippingAddress: profile.data.user.address || '',
+          shippingCity: profile.data.user.city || '',
+          shippingState: profile.data.user.state || '',
+          shippingZip: profile.data.user.zip || '',
+          shippingCountry: profile.data.user.country || 'US',
+        };
+        renderStep();
+        renderSummary();
+      } catch (err) { showToast(err.message, 'error'); }
+    }
+
+    function renderSummary() {
+      const subtotal = cartData.subtotal;
+      const discount = couponDiscount;
+      const afterDiscount = subtotal - discount;
+      const shipping = afterDiscount >= 75 ? 0 : 9.99;
+      const tax = Math.round(afterDiscount * 0.08 * 100) / 100;
+      const total = Math.round((afterDiscount + shipping + tax) * 100) / 100;
+
+      document.getElementById('order-summary').innerHTML = `
+        <h3 class="mb-3">Order Summary</h3>
+        ${cartData.items.map(i => `<div class="cart-summary-row"><span>${i.name} × ${i.quantity}</span><span>${formatPrice(i.price * i.quantity)}</span></div>`).join('')}
+        <div class="cart-summary-row"><span>Subtotal</span><span data-testid="summary-subtotal">${formatPrice(subtotal)}</span></div>
+        ${discount > 0 ? `<div class="cart-summary-row text-success"><span>Discount</span><span data-testid="summary-discount">-${formatPrice(discount)}</span></div>` : ''}
+        <div class="cart-summary-row"><span>Shipping</span><span data-testid="summary-shipping">${shipping === 0 ? 'FREE' : formatPrice(shipping)}</span></div>
+        <div class="cart-summary-row"><span>Tax</span><span data-testid="summary-tax">${formatPrice(tax)}</span></div>
+        <div class="cart-summary-row total"><span>Total</span><span data-testid="summary-total">${formatPrice(total)}</span></div>
+        <div class="mt-3">
+          <label class="form-label">Coupon Code</label>
+          <div class="coupon-input">
+            <input type="text" id="coupon-code" class="form-input" placeholder="Enter code" data-testid="coupon-input" ${appliedCoupon ? 'disabled' : ''}>
+            <button class="btn btn-secondary" id="apply-coupon" data-testid="apply-coupon-btn" ${appliedCoupon ? 'disabled' : ''}>Apply</button>
+          </div>
+          <div id="coupon-message"></div>
+        </div>`;
+
+      if (!appliedCoupon) {
+        document.getElementById('apply-coupon').addEventListener('click', applyCoupon);
+      }
+    }
+
+    async function applyCoupon() {
+      const code = document.getElementById('coupon-code').value.trim();
+      if (!code) return;
+      try {
+        const res = await coupons.validate(code, cartData.subtotal);
+        appliedCoupon = res.data;
+        couponDiscount = res.data.discount;
+        document.getElementById('coupon-message').innerHTML = `<div class="coupon-applied" data-testid="coupon-applied">${res.data.message} <button onclick="removeCoupon()" data-testid="remove-coupon">✕</button></div>`;
+        renderSummary();
+      } catch (err) {
+        document.getElementById('coupon-message').innerHTML = `<div class="form-error" data-testid="coupon-error">${err.message}</div>`;
+      }
+    }
+
+    function removeCoupon() {
+      appliedCoupon = null;
+      couponDiscount = 0;
+      document.getElementById('coupon-message').innerHTML = '';
+      renderSummary();
+    }
+
+    function updateSteps() {
+      document.querySelectorAll('.step').forEach(step => {
+        const num = parseInt(step.dataset.step);
+        step.classList.toggle('active', num === currentStep);
+        step.classList.toggle('completed', num < currentStep);
+      });
+    }
+
+    function renderStep() {
+      updateSteps();
+      const area = document.getElementById('checkout-form-area');
+
+      if (currentStep === 1) {
+        area.innerHTML = `
+          <div class="card"><div class="card-header">Shipping Information</div><div class="card-body">
+            <form id="shipping-form" data-testid="shipping-form">
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">First Name</label><input name="shippingFirstName" class="form-input" required data-testid="shipping-first-name" value="${formData.shipping.shippingFirstName || ''}"></div>
+                <div class="form-group"><label class="form-label">Last Name</label><input name="shippingLastName" class="form-input" required data-testid="shipping-last-name" value="${formData.shipping.shippingLastName || ''}"></div>
+              </div>
+              <div class="form-group"><label class="form-label">Address</label><input name="shippingAddress" class="form-input" required data-testid="shipping-address" value="${formData.shipping.shippingAddress || ''}"></div>
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">City</label><input name="shippingCity" class="form-input" required data-testid="shipping-city" value="${formData.shipping.shippingCity || ''}"></div>
+                <div class="form-group"><label class="form-label">State</label><input name="shippingState" class="form-input" required data-testid="shipping-state" value="${formData.shipping.shippingState || ''}"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">ZIP Code</label><input name="shippingZip" class="form-input" required data-testid="shipping-zip" value="${formData.shipping.shippingZip || ''}"></div>
+                <div class="form-group"><label class="form-label">Country</label><input name="shippingCountry" class="form-input" value="${formData.shipping.shippingCountry || 'US'}" data-testid="shipping-country"></div>
+              </div>
+              <button type="submit" class="btn btn-primary" data-testid="shipping-next">Continue to Payment →</button>
+            </form>
+          </div></div>`;
+        document.getElementById('shipping-form').addEventListener('submit', (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          formData.shipping = Object.fromEntries(fd);
+          currentStep = 2;
+          renderStep();
+        });
+      } else if (currentStep === 2) {
+        area.innerHTML = `
+          <div class="card"><div class="card-header">Payment Method</div><div class="card-body">
+            <form id="payment-form" data-testid="payment-form">
+              <div class="form-group">
+                <label class="filter-option"><input type="radio" name="paymentMethod" value="credit_card" checked data-testid="payment-credit-card"> Credit Card</label>
+                <label class="filter-option"><input type="radio" name="paymentMethod" value="debit_card" data-testid="payment-debit-card"> Debit Card</label>
+                <label class="filter-option"><input type="radio" name="paymentMethod" value="paypal" data-testid="payment-paypal"> PayPal</label>
+              </div>
+              <div id="card-fields">
+                <div class="form-group"><label class="form-label">Card Number</label><input name="cardNumber" class="form-input" placeholder="4111 1111 1111 1111" data-testid="card-number" maxlength="19"></div>
+                <div class="form-row">
+                  <div class="form-group"><label class="form-label">Expiry</label><input class="form-input" placeholder="MM/YY" data-testid="card-expiry"></div>
+                  <div class="form-group"><label class="form-label">CVV</label><input class="form-input" placeholder="123" data-testid="card-cvv" maxlength="4"></div>
+                </div>
+                <div class="form-hint">Test card: 4111111111111111 (success) or 4000000000000002 (decline)</div>
+              </div>
+              <div class="flex gap-2 mt-3">
+                <button type="button" class="btn btn-secondary" id="back-to-shipping" data-testid="back-to-shipping">← Back</button>
+                <button type="submit" class="btn btn-primary" data-testid="payment-next">Review Order →</button>
+              </div>
+            </form>
+          </div></div>`;
+        document.getElementById('back-to-shipping').addEventListener('click', () => { currentStep = 1; renderStep(); });
+        document.getElementById('payment-form').addEventListener('submit', (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          formData.payment = Object.fromEntries(fd);
+          currentStep = 3;
+          renderStep();
+        });
+      } else {
+        area.innerHTML = `
+          <div class="card"><div class="card-header">Review Your Order</div><div class="card-body" data-testid="review-section">
+            <h4 class="mb-2">Shipping To</h4>
+            <p data-testid="review-shipping">${formData.shipping.shippingFirstName} ${formData.shipping.shippingLastName}<br>
+            ${formData.shipping.shippingAddress}<br>${formData.shipping.shippingCity}, ${formData.shipping.shippingState} ${formData.shipping.shippingZip}</p>
+            <h4 class="mb-2 mt-3">Payment</h4>
+            <p data-testid="review-payment">${formData.payment.paymentMethod?.replace('_', ' ').toUpperCase()}</p>
+            <div id="place-order-error"></div>
+            <div class="flex gap-2 mt-3">
+              <button class="btn btn-secondary" id="back-to-payment" data-testid="back-to-payment">← Back</button>
+              <button class="btn btn-primary btn-lg" id="place-order" data-testid="place-order-btn">Place Order</button>
+            </div>
+          </div></div>`;
+        document.getElementById('back-to-payment').addEventListener('click', () => { currentStep = 2; renderStep(); });
+        document.getElementById('place-order').addEventListener('click', placeOrder);
+      }
+    }
+
+    async function placeOrder() {
+      const btn = document.getElementById('place-order');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+      try {
+        const orderData = { ...formData.shipping, ...formData.payment, couponCode: appliedCoupon?.code };
+        const res = await orders.create(orderData);
+        localStorage.setItem('nova_last_order', JSON.stringify(res.data));
+        window.location.href = `/order-confirmation.html?order=${res.data.order.order_number}`;
+      } catch (err) {
+        document.getElementById('place-order-error').innerHTML = `<div class="alert alert-error mt-2" data-testid="order-error">${err.message}</div>`;
+        btn.disabled = false;
+        btn.textContent = 'Place Order';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
