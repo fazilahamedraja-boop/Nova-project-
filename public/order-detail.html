@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order Details - NOVA</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <main class="main-content">
+    <div class="container" id="order-container" data-testid="order-detail-container"></div>
+  </main>
+  <div id="footer"></div>
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Auth required');
+
+    async function loadOrder() {
+      const container = document.getElementById('order-container');
+      const params = getQueryParams();
+      if (!params.id) { showError(container, 'Order not found'); return; }
+
+      showLoading(container);
+      try {
+        const res = await orders.get(params.id);
+        const { order, items } = res.data;
+        document.title = `Order ${order.order_number} - NOVA`;
+
+        container.innerHTML = `
+          <a href="/orders.html" style="font-size:0.875rem" data-testid="back-to-orders">← Back to Orders</a>
+          <div class="flex-between mt-2 mb-4">
+            <div>
+              <h1 data-testid="order-number">${order.order_number}</h1>
+              <p class="text-muted" data-testid="order-date">Placed on ${formatDateTime(order.created_at)}</p>
+            </div>
+            <div>${getStatusBadge(order.status)}</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 340px;gap:2rem">
+            <div>
+              <div class="card mb-3"><div class="card-header">Items</div><div class="card-body" data-testid="order-items">
+                ${items.map(item => `
+                  <div class="cart-item" data-testid="order-item">
+                    <div class="cart-item-info">
+                      <div class="cart-item-name">${item.product_name}</div>
+                      <div class="text-muted" style="font-size:0.8125rem">SKU: ${item.product_sku} × ${item.quantity}</div>
+                    </div>
+                    <div class="cart-item-total">${formatPrice(item.total_price)}</div>
+                  </div>
+                `).join('')}
+              </div></div>
+              <div class="card"><div class="card-header">Shipping Address</div><div class="card-body" data-testid="shipping-address">
+                <p>${order.shipping_first_name} ${order.shipping_last_name}<br>
+                ${order.shipping_address}<br>${order.shipping_city}, ${order.shipping_state} ${order.shipping_zip}<br>${order.shipping_country}</p>
+              </div></div>
+            </div>
+            <div class="cart-summary" data-testid="order-summary">
+              <h3 class="mb-3">Order Summary</h3>
+              <div class="cart-summary-row"><span>Subtotal</span><span>${formatPrice(order.subtotal)}</span></div>
+              ${order.discount > 0 ? `<div class="cart-summary-row text-success"><span>Discount (${order.coupon_code})</span><span>-${formatPrice(order.discount)}</span></div>` : ''}
+              <div class="cart-summary-row"><span>Shipping</span><span>${order.shipping === 0 ? 'FREE' : formatPrice(order.shipping)}</span></div>
+              <div class="cart-summary-row"><span>Tax</span><span>${formatPrice(order.tax)}</span></div>
+              <div class="cart-summary-row total"><span>Total</span><span data-testid="order-total">${formatPrice(order.total)}</span></div>
+              <div class="cart-summary-row mt-2"><span>Payment</span><span>${getStatusBadge(order.payment_status)}</span></div>
+              <div class="cart-summary-row"><span>Method</span><span>${order.payment_method?.replace('_', ' ')}</span></div>
+            </div>
+          </div>`;
+      } catch (err) { showError(container, err.message); }
+    }
+
+    loadOrder();
+  </script>
+</body>
+</html>

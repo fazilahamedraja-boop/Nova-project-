@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wishlist - NOVA</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <main class="main-content">
+    <div class="container">
+      <h1 class="mb-4" data-testid="wishlist-title">My Wishlist</h1>
+      <div id="wishlist-content" data-testid="wishlist-content"></div>
+    </div>
+  </main>
+  <div id="footer"></div>
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Auth required');
+
+    async function loadWishlist() {
+      const container = document.getElementById('wishlist-content');
+      showLoading(container);
+      try {
+        const res = await wishlist.get();
+        if (res.data.items.length === 0) {
+          showEmpty(container, '♡', 'Your wishlist is empty', 'Save items you love for later.',
+            '<a href="/products.html" class="btn btn-primary mt-3" data-testid="browse-products">Browse Products</a>');
+          return;
+        }
+        container.innerHTML = `<div class="grid grid-4" data-testid="wishlist-grid">${res.data.items.map(item => `
+          <div class="product-card" data-testid="wishlist-item" data-product-id="${item.product_id}">
+            <div class="product-card-image">
+              <a href="/product-detail.html?id=${item.product_id}"><img src="${item.image_url || '/images/products/placeholder.svg'}" alt="${item.name}" data-testid="wishlist-item-image"></a>
+            </div>
+            <div class="product-card-body">
+              <div class="product-card-category">${item.category}</div>
+              <div class="product-card-name"><a href="/product-detail.html?id=${item.product_id}">${item.name}</a></div>
+              <div class="product-card-price"><span class="price-current">${formatPrice(item.price)}</span></div>
+              <div class="product-card-actions">
+                <button class="btn btn-primary btn-sm" data-action="add-cart" data-id="${item.product_id}" data-testid="wishlist-add-cart" ${item.stock === 0 ? 'disabled' : ''}>Add to Cart</button>
+                <button class="btn btn-secondary btn-sm" data-action="remove" data-id="${item.product_id}" data-testid="wishlist-remove">Remove</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}</div>`;
+
+        container.querySelectorAll('[data-action="add-cart"]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try { await cart.add(parseInt(btn.dataset.id)); showToast('Added to cart!', 'success'); }
+            catch (err) { showToast(err.message, 'error'); }
+          });
+        });
+        container.querySelectorAll('[data-action="remove"]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try { await wishlist.remove(btn.dataset.id); showToast('Removed from wishlist', 'info'); loadWishlist(); }
+            catch (err) { showToast(err.message, 'error'); }
+          });
+        });
+      } catch (err) { showError(container, err.message); }
+    }
+
+    loadWishlist();
+  </script>
+</body>
+</html>

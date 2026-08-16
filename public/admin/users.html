@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Users - NOVA Admin</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="admin-layout">
+    <aside class="admin-sidebar" data-testid="admin-sidebar">
+      <a href="/admin/dashboard.html">Dashboard</a>
+      <a href="/admin/products.html">Products</a>
+      <a href="/admin/orders.html">Orders</a>
+      <a href="/admin/users.html" class="active" data-testid="nav-users">Users</a>
+      <a href="/">← Back to Store</a>
+    </aside>
+    <div class="admin-content">
+      <h1 class="mb-4" data-testid="admin-users-title">Users</h1>
+      <div class="flex gap-2 mb-3">
+        <input type="text" id="search-input" class="form-input" placeholder="Search users..." style="max-width:300px" data-testid="admin-user-search">
+      </div>
+      <div id="users-table" data-testid="admin-users-table"></div>
+      <div id="pagination"></div>
+    </div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    if (!api.getToken() || !requireAdmin()) throw new Error('Admin required');
+    let currentPage = 1;
+
+    async function loadUsers() {
+      const container = document.getElementById('users-table');
+      showLoading(container);
+      try {
+        const res = await admin.users.list({ page: currentPage, limit: 20, search: document.getElementById('search-input').value });
+        container.innerHTML = `<div class="table-wrapper"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead><tbody>
+          ${res.data.users.map(u => `<tr data-testid="admin-user-row" data-id="${u.id}">
+            <td>${u.id}</td><td>${u.first_name} ${u.last_name}</td><td data-testid="user-email-${u.id}">${u.email}</td>
+            <td>${u.phone || '-'}</td>
+            <td data-testid="user-status-${u.id}">${u.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Inactive</span>'}</td>
+            <td>${formatDate(u.created_at)}</td>
+            <td>
+              <button class="btn ${u.is_active ? 'btn-danger' : 'btn-success'} btn-sm" data-action="toggle" data-id="${u.id}" data-active="${u.is_active}" data-testid="toggle-user-${u.id}">
+                ${u.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+            </td>
+          </tr>`).join('')}
+        </tbody></table></div>`;
+        renderPagination(document.getElementById('pagination'), res.data.pagination, (p) => { currentPage = p; loadUsers(); });
+        container.querySelectorAll('[data-action="toggle"]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const isActive = btn.dataset.active === '1' || btn.dataset.active === 'true';
+            if (!confirm(`${isActive ? 'Deactivate' : 'Activate'} this user?`)) return;
+            try {
+              await admin.users.update(btn.dataset.id, { isActive: !isActive });
+              showToast(`User ${isActive ? 'deactivated' : 'activated'}`, 'success');
+              loadUsers();
+            } catch (err) { showToast(err.message, 'error'); }
+          });
+        });
+      } catch (err) { showError(container, err.message); }
+    }
+
+    document.getElementById('search-input').addEventListener('input', debounce(() => { currentPage = 1; loadUsers(); }, 400));
+    loadUsers();
+  </script>
+</body>
+</html>

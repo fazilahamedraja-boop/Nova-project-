@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - NOVA</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="auth-container">
+    <div class="auth-card card">
+      <div class="card-body">
+        <h1 class="auth-title" data-testid="login-title">Welcome Back</h1>
+        <p class="auth-subtitle">Sign in to your NOVA account</p>
+        <div id="login-alert"></div>
+        <form id="login-form" data-testid="login-form">
+          <div class="form-group">
+            <label class="form-label" for="email">Email</label>
+            <input type="email" id="email" name="email" class="form-input" required data-validate="email" data-testid="login-email" placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input type="password" id="password" name="password" class="form-input" required data-testid="login-password" placeholder="Enter your password">
+          </div>
+          <div class="form-group flex-between">
+            <label style="font-size:0.875rem"><input type="checkbox" data-testid="remember-me"> Remember me</label>
+            <a href="/forgot-password.html" data-testid="forgot-password-link">Forgot password?</a>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block btn-lg" data-testid="login-submit" id="login-btn">Sign In</button>
+        </form>
+        <div class="auth-footer">
+          Don't have an account? <a href="/register.html" data-testid="register-link">Create one</a>
+        </div>
+        <div class="text-center mt-2">
+          <a href="/products.html" class="btn btn-secondary" id="browse-products-guest-btn" data-testid="browse-products-guest-btn">Browse products as guest</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="footer"></div>
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const errors = validateForm(form);
+      if (Object.keys(errors).length) { displayFormErrors(form, errors); return; }
+
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+
+      try {
+        const user = await handleLogin(form.email.value, form.password.value);
+        const params = getQueryParams();
+        if (user.role === 'admin') {
+          window.location.href = '/admin/dashboard.html';
+        } else {
+          window.location.href = params.redirect || '/';
+        }
+      } catch (err) {
+        document.getElementById('login-alert').innerHTML = `<div class="alert alert-error" data-testid="login-error">${err.message}</div>`;
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+  </script>
+</body>
+</html>
